@@ -1,4 +1,7 @@
 
+import tensorflow as tf
+import numpy as np
+
 # Idea 1 : Using attention matrix to denote parents
 # Problem : If we use dot product attention then the self-attention relation is somewhat symmetrical
 # Is that true?
@@ -10,15 +13,17 @@
 
 class AttentionModel(object):
 
-	def __init__(self, sess, vocab_size, max_len=20, hidden=512, name="DepParse", pos_enc=True, enc_layers=6, heads=8):
+	def __init__(self, sess, vocab_size, pos_size=18, max_len=20, hidden=512, name="DepParse", pos_enc=True, enc_layers=3, dec_layers=3, heads=8):
 		super(AttentionModel, self).__init__()
 		self.sess = sess
 		self.max_len = max_len
-		self.vocab_size = en_vocab_size
+		self.vocab_size = vocab_size
+		self.pos_size = pos_size
 		self.hidden = hidden
 		self.name = name
 		self.pos_enc = pos_enc
 		self.enc_layers = enc_layers
+		self.dec_layers = dec_layers
 		self.heads = heads
 		with tf.variable_scope(self.name):
 			self.build_model()
@@ -27,39 +32,59 @@ class AttentionModel(object):
 
 	def build_model(self):
 
-		self.enc_input = tf.placeholder(
-			shape=(None, self.max_len, self.de_vocab_size),
+		self.inputs = tf.placeholder(
+			shape=(None, self.max_len + 2, self.vocab_size),
+			dtype=tf.float32,
+			name="encoder_input",
+		)
+
+		self.pos_inputs = tf.placeholder(
+			shape=(None, self.max_len + 2, self.pos_size),
 			dtype=tf.float32,
 			name="encoder_input",
 		)
 
 		self.labels = tf.placeholder(
-			shape=(None, self.max_len + 1, self.en_vocab_size),
+			shape=(None, self.max_len + 2, self.max_len + 2),
 			dtype=tf.float32,
 			name="labels",
 		)
 
-		enc_pos_enc = tf.Variable(
-			initial_value=tf.zeros((1, self.max_len, self.hidden)),
+		decoder_input = tf.Variable(
+			initial_value=tf.zeros((1, self.max_len + 2, self.hidden)),
 			trainable=True,
 			dtype=tf.float32,
-			name="encoder_positional_coding"
+			name="decoder_input",
+		)
+
+		posit_enc = tf.Variable(
+			initial_value=tf.zeros((1, self.max_len + 2, self.hidden)),
+			trainable=True,
+			dtype=tf.float32,
+			name="positional_coding"
 		)
 
 		# Embed inputs to hidden dimension
 		input_emb = tf.layers.dense(
-			inputs=self.enc_input,
+			inputs=self.inputs,
 			units=self.hidden,
 			activation=None,
-			name="encoder_input_embedding",
+			name="input_embedding",
+		)
+
+		# Embed POS inputs to hidden dimension
+		pos_input_emb = tf.layers.dense(
+			inputs=self.pos_inputs,
+			units=self.hidden,
+			activation=None,
+			name="pos_input_embedding"
 		)
 
 		# Add positional encodings
-		encoding = enc_input_emb + enc_pos_enc
+		encoding = input_emb + posit_enc + pos_input_emb
 
 		for i in np.arange(self.enc_layers):
-			# Encoder Self-Attention
-			encoding, attention = self.multihead_attention(
+			encoding, _ = self.multihead_attention(
 				query=encoding,
 				key=encoding,
 				value=encoding,
@@ -79,6 +104,47 @@ class AttentionModel(object):
 				name="encoder_layer{}_dense2".format(i + 1)
 			)
 			encoding = tf.contrib.layers.layer_norm(encoding, begin_norm_axis=2)
+
+		decoding, self.attention_weights = self.multihead_attention(
+			query=tf.tile(decoder_input, multiples=tf.concat(([tf.shape(self.inputs)[0]], [1], [1]), axis=0)),
+			key=encoding,
+			value=encoding,
+			h=self.heads,
+		)
+
+		for i in np.arange(self.dec_layers):
+			decoding, _ = self.multihead_attention(
+				query=decoding,
+				key=decoding,
+				value=decoding,
+				h=self.heads,
+			)
+			decoding, _ = self.multihead_attention(
+				query=decoding,
+				key=encoding,
+				value=encoding,
+				h=self.heads,
+			)
+			dense = tf.layers.dense(
+				inputs=decoding,
+				units=self.hidden * 2,
+				activation=tf.nn.relu,
+				name="decoder_layer{}_dense1".format(i + 1)
+			)
+			decoding += tf.layers.dense(
+				inputs=dense,
+				units=self.hidden,
+				activation=None,
+				name="decoder_layer{}_dense2".format(i + 1)
+			)
+			decoding = tf.contrib.layers.layer_norm(encoding, begin_norm_axis=2)
+
+		decoding = tf.layers.dense(
+			inputs=decoding,
+			units=self.max_len + 2,
+			activation=None,
+			name="decoding",
+		)
 
 		self.logits = decoding
 		self.predictions = tf.argmax(self.logits, axis=2)
