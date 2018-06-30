@@ -20,7 +20,8 @@ class DependencyTask(object):
 			self.y_heads = []
 			self.y_labels = []
 			with open(filepath, 'r', encoding='utf-8') as file:
-				idx = -1
+				idx = 0
+				punct = []
 				tokens = []
 				tokens_pos = []
 				heads = []
@@ -30,12 +31,19 @@ class DependencyTask(object):
 						print("Processing line {}...".format(i + 1))
 					if line.startswith("#"):
 						if len(tokens) > 0:
+							mod = np.zeros_like(heads)
+							for n in punct:
+								for i, head in enumerate(heads):
+									if head > n:
+										mod[i] += 1
+							heads = list(np.array(heads) - mod)
 							self.line_no.append(idx)
 							self.x_tokens.append(tokens)
 							self.x_pos.append(tokens_pos)
 							self.y_heads.append(heads)
 							self.y_labels.append(labels)
-							idx = -1
+							idx = 0
+							punct = []
 							tokens = []
 							tokens_pos = []
 							heads = []
@@ -43,8 +51,7 @@ class DependencyTask(object):
 					elif line.startswith('\n'):
 						pass
 					else:
-						if idx == -1:
-							idx = i
+						idx += 1
 						elements = line.split('\t')
 						token = elements[1]
 						pos = elements[3]
@@ -58,6 +65,8 @@ class DependencyTask(object):
 									tokens_pos.append(pos)
 									heads.append(int(head))
 									labels.append(label)
+								else:
+									punct.append(idx)
 							else:
 								tokens.append(token)
 								tokens_pos.append(pos)
@@ -65,12 +74,18 @@ class DependencyTask(object):
 								labels.append(label)
 
 				if len(tokens) > 0:
+					mod = np.zeros_like(heads)
+					for n in punct:
+						for i, head in enumerate(heads):
+							if head > n:
+								mod[i] += 1
+					heads = list(np.array(heads) - mod)
 					self.line_no.append(idx)
 					self.x_tokens.append(tokens)
 					self.x_pos.append(tokens_pos)
 					self.y_heads.append(heads)
 					self.y_labels.append(labels)
-					idx = -1
+					idx = 0
 					tokens = []
 					tokens_pos = []
 					heads = []
@@ -108,6 +123,9 @@ class DependencyTask(object):
 		new_x_pos = []
 		new_y_heads = []
 		new_y_labels = []
+		new_y_roots = []
+		new_y_sorted_in = []
+		new_y_sorted_out = []
 		for i, _ in enumerate(x_tokens):
 			tokens = []
 			padded_sentence = ['<ROOT>']
@@ -142,6 +160,24 @@ class DependencyTask(object):
 				padded_heads.append(-1)
 			padded_heads.append(-1)
 			new_y_heads.append(np.eye(max_len + 2)[np.array(padded_heads)])
+
+			root = -1
+			for k, head in enumerate(y_heads[i][:max_len]):
+				if head == 0:
+					root = k
+			new_y_roots.append([np.eye(max_len + 2)[root]])
+
+			sorted_heads = [0]
+			
+			# while len(sorted_heads) < len(padded_heads):
+			# 	parent = sorted_heads[-1]
+			# 	for k, head in enumerate(padded_heads[1:]):
+			# 		if head == parent or (head == -1 and parent == max_len - 1):
+			# 			sorted_heads.append(k + 1)
+				
+			# new_y_sorted_in.append([np.eye(max_len + 2)[np.array(sorted_heads)]])
+			# new_y_sorted_out.append([np.eye(max_len + 2)[np.array(sorted_heads[1:] + [0])]])
+
 		return np.array(new_x_tokens), np.array(new_x_pos), np.array(new_y_heads)
 
 	def make_dict(self, filepath, min_freq=10):
@@ -161,6 +197,12 @@ class DependencyTask(object):
 			with open(filepath + '.dict', 'w') as file:
 				json.dump(self.dict, file)
 		# self.dict = np.array(self.dict)
+
+	def prettify(self, tokens, clip_padding=True):
+		tokens = np.array(self.dict)[np.argmax(tokens, axis=1)]
+		while tokens[-1] == '<PAD>' or tokens[-1] == '<NULL>':
+			tokens = tokens[:-1]
+		return " ".join(tokens)
 
 	def export_json(self, filepath):
 		with open(filepath + "_x_tokens", 'w') as file:

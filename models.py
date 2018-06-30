@@ -13,7 +13,7 @@ import numpy as np
 
 class AttentionModel(object):
 
-	def __init__(self, sess, vocab_size, pos_size=18, max_len=20, hidden=512, name="DepParse", pos_enc=True, enc_layers=3, dec_layers=3, heads=8):
+	def __init__(self, sess, vocab_size, pos_size=18, max_len=20, hidden=512, name="DepParse", pos_enc=True, enc_layers=6, dec_layers=6, heads=8):
 		super(AttentionModel, self).__init__()
 		self.sess = sess
 		self.max_len = max_len
@@ -46,12 +46,14 @@ class AttentionModel(object):
 
 		self.labels = tf.placeholder(
 			shape=(None, self.max_len + 2, self.max_len + 2),
+			# shape=(None, 1, self.max_len + 2),
 			dtype=tf.float32,
 			name="labels",
 		)
 
 		decoder_input = tf.Variable(
 			initial_value=tf.zeros((1, self.max_len + 2, self.hidden)),
+			# initial_value=tf.zeros((1, 1, self.hidden)),
 			trainable=True,
 			dtype=tf.float32,
 			name="decoder_input",
@@ -137,13 +139,20 @@ class AttentionModel(object):
 				activation=None,
 				name="decoder_layer{}_dense2".format(i + 1)
 			)
-			decoding = tf.contrib.layers.layer_norm(encoding, begin_norm_axis=2)
+			decoding = tf.contrib.layers.layer_norm(decoding, begin_norm_axis=2)
+
+		decoding = tf.layers.dense(
+			inputs=decoding,
+			units=self.hidden * 2,
+			activation=tf.nn.relu,
+			name="decoding_1",
+		)
 
 		decoding = tf.layers.dense(
 			inputs=decoding,
 			units=self.max_len + 2,
 			activation=None,
-			name="decoding",
+			name="decoding_2",
 		)
 
 		self.logits = decoding
