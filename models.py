@@ -13,12 +13,13 @@ import numpy as np
 
 class AttentionModel(object):
 
-	def __init__(self, sess, vocab_size, pos_size=18, max_len=20, hidden=512, name="DepParse", pos_enc=True, enc_layers=6, dec_layers=6, heads=8):
+	def __init__(self, sess, vocab_size, pos_size=18, pos_2_size=42, max_len=20, hidden=512, name="DepParse", pos_enc=True, enc_layers=6, dec_layers=6, heads=8):
 		super(AttentionModel, self).__init__()
 		self.sess = sess
 		self.max_len = max_len
 		self.vocab_size = vocab_size
 		self.pos_size = pos_size
+		self.pos_2_size = pos_2_size
 		self.hidden = hidden
 		self.name = name
 		self.pos_enc = pos_enc
@@ -28,7 +29,7 @@ class AttentionModel(object):
 		with tf.variable_scope(self.name):
 			self.build_model()
 			variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.name)
-			self.saver = tf.train.Saver(var_list=variables, max_to_keep=1)
+			self.saver = tf.train.Saver(var_list=variables, max_to_keep=2)
 
 	def build_model(self):
 
@@ -41,29 +42,61 @@ class AttentionModel(object):
 		self.pos_inputs = tf.placeholder(
 			shape=(None, self.max_len + 2, self.pos_size),
 			dtype=tf.float32,
-			name="encoder_input",
+			name="encoder_pos_input",
+		)
+
+		self.pos_2_inputs = tf.placeholder(
+			shape=(None, self.max_len + 2, self.pos_2_size),
+			dtype=tf.float32,
+			name="encoder_pos_2_input",
+		)
+
+		self.dec_inputs = tf.placeholder(
+			shape=(None, self.max_len * 5, self.max_len + 2),
+			# shape=(None, 1, self.max_len + 2),
+			dtype=tf.float32,
+			name="dec_inputs",
 		)
 
 		self.labels = tf.placeholder(
-			shape=(None, self.max_len + 2, self.max_len + 2),
+			shape=(None, self.max_len * 5, self.max_len + 2),
 			# shape=(None, 1, self.max_len + 2),
 			dtype=tf.float32,
 			name="labels",
 		)
 
-		decoder_input = tf.Variable(
-			initial_value=tf.zeros((1, self.max_len + 2, self.hidden)),
-			# initial_value=tf.zeros((1, 1, self.hidden)),
-			trainable=True,
-			dtype=tf.float32,
-			name="decoder_input",
+		self.is_training = tf.placeholder(
+			shape=(None),
+			dtype=tf.bool,
+			name="is_training",
 		)
+
+		# self.mask = tf.placeholder(
+		# 	shape=(None, 1, self.max_len + 2),
+		# 	dtype=tf.float32,
+		# 	name="mask",
+		# )
+
+		# decoder_input = tf.Variable(
+		# 	initial_value=tf.zeros((1, self.max_len + 2, self.hidden)),
+		# 	# initial_value=tf.zeros((1, 1, self.hidden)),
+		# 	trainable=True,
+		# 	dtype=tf.float32,
+		# 	name="decoder_input",
+		# )
 
 		posit_enc = tf.Variable(
 			initial_value=tf.zeros((1, self.max_len + 2, self.hidden)),
 			trainable=True,
 			dtype=tf.float32,
-			name="positional_coding"
+			name="enc_positional_coding"
+		)
+
+		posit_dec = tf.Variable(
+			initial_value=tf.zeros((1, self.max_len * 5, self.hidden)),
+			trainable=True,
+			dtype=tf.float32,
+			name="dec_positional_coding"
 		)
 
 		# Embed inputs to hidden dimension
@@ -82,8 +115,26 @@ class AttentionModel(object):
 			name="pos_input_embedding"
 		)
 
+		# Embed POS2 inputs to hidden dimension
+		pos_2_input_emb = tf.layers.dense(
+			inputs=self.pos_2_inputs,
+			units=self.hidden,
+			activation=None,
+			name="pos_2_input_embedding"
+		)
+
+		# Embed inputs to hidden dimension
+		dec_input_emb = tf.layers.dense(
+			inputs=self.dec_inputs,
+			units=self.hidden,
+			activation=None,
+			name="dec_input_embedding",
+		)
+
 		# Add positional encodings
-		encoding = input_emb + posit_enc + pos_input_emb
+		encoding = input_emb + posit_enc + pos_input_emb + pos_2_input_emb
+
+		decoding = dec_input_emb + posit_dec
 
 		for i in np.arange(self.enc_layers):
 			encoding, _ = self.multihead_attention(
@@ -107,12 +158,12 @@ class AttentionModel(object):
 			)
 			encoding = tf.contrib.layers.layer_norm(encoding, begin_norm_axis=2)
 
-		decoding, self.attention_weights = self.multihead_attention(
-			query=tf.tile(decoder_input, multiples=tf.concat(([tf.shape(self.inputs)[0]], [1], [1]), axis=0)),
-			key=encoding,
-			value=encoding,
-			h=self.heads,
-		)
+		# decoding, self.attention_weights = self.multihead_attention(
+		# 	query=tf.tile(decoder_input, multiples=tf.concat(([tf.shape(self.inputs)[0]], [1], [1]), axis=0)),
+		# 	key=encoding,
+		# 	value=encoding,
+		# 	h=self.heads,
+		# )
 
 		for i in np.arange(self.dec_layers):
 			decoding, _ = self.multihead_attention(
@@ -120,6 +171,7 @@ class AttentionModel(object):
 				key=decoding,
 				value=decoding,
 				h=self.heads,
+				mask=True,
 			)
 			decoding, _ = self.multihead_attention(
 				query=decoding,
@@ -148,14 +200,21 @@ class AttentionModel(object):
 			name="decoding_1",
 		)
 
+		decoding = tf.layers.dropout(
+			inputs=decoding,
+			rate=0.5,
+			training=self.is_training,
+		)
+
 		decoding = tf.layers.dense(
 			inputs=decoding,
 			units=self.max_len + 2,
 			activation=None,
-			name="decoding_2",
+			name="decoded_order",
 		)
 
 		self.logits = decoding
+		self.softmax_logits = tf.nn.softmax(self.logits)
 		self.predictions = tf.argmax(self.logits, axis=2)
 		self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.labels, logits=self.logits))
 		self.optimize = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
