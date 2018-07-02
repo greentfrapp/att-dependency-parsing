@@ -210,13 +210,6 @@ class AttentionModel(object):
 			name="decoding_1",
 		)
 
-		decoding = tf.layers.dense(
-			inputs=decoding,
-			units=self.hidden * 2,
-			activation=tf.nn.relu,
-			name="decoding_2",
-		)
-
 		# decoding = tf.layers.dropout(
 		# 	inputs=decoding,
 		# 	rate=0.5,
@@ -226,6 +219,12 @@ class AttentionModel(object):
 		# decode parents
 		decoded_parents = tf.layers.dense(
 			inputs=decoding,
+			units=self.hidden * 2,
+			activation=tf.nn.relu,
+			name="decoding_parents_pre",
+		)
+		decoded_parents = tf.layers.dense(
+			inputs=decoded_parents,
 			units=self.max_len + 2,
 			activation=None,
 			name="decoded_parents",
@@ -234,6 +233,12 @@ class AttentionModel(object):
 		# decode children
 		decoded_children = tf.layers.dense(
 			inputs=decoding,
+			units=self.hidden * 2,
+			activation=tf.nn.relu,
+			name="decoding_children_pre",
+		)
+		decoded_children = tf.layers.dense(
+			inputs=decoded_children,
 			units=self.max_len + 2,
 			activation=None,
 			name="decoded_children",
