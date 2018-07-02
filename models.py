@@ -51,18 +51,28 @@ class AttentionModel(object):
 			name="encoder_pos_2_input",
 		)
 
-		self.dec_inputs = tf.placeholder(
-			shape=(None, self.max_len * 5, self.max_len + 2),
-			# shape=(None, 1, self.max_len + 2),
+		self.y_in_parents = tf.placeholder(
+			shape=(None, self.max_len, self.max_len + 2),
 			dtype=tf.float32,
-			name="dec_inputs",
+			name="y_in_parents",
 		)
 
-		self.labels = tf.placeholder(
-			shape=(None, self.max_len * 5, self.max_len + 2),
-			# shape=(None, 1, self.max_len + 2),
+		self.y_in_children = tf.placeholder(
+			shape=(None, self.max_len, self.max_len + 2),
 			dtype=tf.float32,
-			name="labels",
+			name="y_in_children",
+		)
+
+		self.y_out_parents = tf.placeholder(
+			shape=(None, self.max_len, self.max_len + 2),
+			dtype=tf.float32,
+			name="y_out_parents",
+		)
+
+		self.y_out_children = tf.placeholder(
+			shape=(None, self.max_len, self.max_len + 2),
+			dtype=tf.float32,
+			name="y_out_children",
 		)
 
 		self.is_training = tf.placeholder(
@@ -93,7 +103,7 @@ class AttentionModel(object):
 		)
 
 		posit_dec = tf.Variable(
-			initial_value=tf.zeros((1, self.max_len * 5, self.hidden)),
+			initial_value=tf.zeros((1, self.max_len, self.hidden)),
 			trainable=True,
 			dtype=tf.float32,
 			name="dec_positional_coding"
@@ -125,7 +135,7 @@ class AttentionModel(object):
 
 		# Embed inputs to hidden dimension
 		dec_input_emb = tf.layers.dense(
-			inputs=self.dec_inputs,
+			inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
 			units=self.hidden,
 			activation=None,
 			name="dec_input_embedding",
@@ -200,23 +210,42 @@ class AttentionModel(object):
 			name="decoding_1",
 		)
 
-		decoding = tf.layers.dropout(
+		decoding = tf.layers.dense(
 			inputs=decoding,
-			rate=0.5,
-			training=self.is_training,
+			units=self.hidden * 2,
+			activation=tf.nn.relu,
+			name="decoding_2",
 		)
 
-		decoding = tf.layers.dense(
+		# decoding = tf.layers.dropout(
+		# 	inputs=decoding,
+		# 	rate=0.5,
+		# 	training=self.is_training,
+		# )
+
+		# decode parents
+		decoded_parents = tf.layers.dense(
 			inputs=decoding,
 			units=self.max_len + 2,
 			activation=None,
-			name="decoded_order",
+			name="decoded_parents",
 		)
 
-		self.logits = decoding
-		self.softmax_logits = tf.nn.softmax(self.logits)
-		self.predictions = tf.argmax(self.logits, axis=2)
-		self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.labels, logits=self.logits))
+		# decode children
+		decoded_children = tf.layers.dense(
+			inputs=decoding,
+			units=self.max_len + 2,
+			activation=None,
+			name="decoded_children",
+		)
+
+		# self.logits = decoding
+		self.softmax_parents = tf.nn.softmax(decoded_parents)
+		self.softmax_children = tf.nn.softmax(decoded_children)
+		# self.predictions = tf.argmax(self.logits, axis=2)
+		self.loss_parents = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.y_out_parents, logits=decoded_parents))
+		self.loss_children = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.y_out_children, logits=decoded_children))
+		self.loss = self.loss_parents + self.loss_children
 		self.optimize = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
 
 	def multihead_attention(self, query, key, value, h=4, mask=False):

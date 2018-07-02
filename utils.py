@@ -132,8 +132,10 @@ class DependencyTask(object):
 		new_x_tokens = []
 		new_x_pos = []
 		new_x_pos_2 = []
-		new_y_in = []
-		new_y_out = []
+		new_y_in_parents = []
+		new_y_in_children = []
+		new_y_out_parents = []
+		new_y_out_children = []
 
 		for i, _ in enumerate(x_tokens):
 
@@ -166,34 +168,42 @@ class DependencyTask(object):
 			pos_2_onehot.append(self.pos_2_dict.index('<NULL>'))
 
 			# Flattened parse tree, depth first
-			# Repeated token id indicates end of branch/leaf
-			parse_tree = [0]
-			children = list(np.arange(1, max_len + 2))
+			parse_tree_children = [0]
+			parse_tree_parents = [0]
+			children = list(np.arange(1, max_len + 1))
+			current_parent = 0
 			while len(children) > 0:
-				current_parent = parse_tree[-1]
+				# current_parent = parse_tree[-1]
 				found_child = False
 				for k, head in enumerate(y_heads[i][:max_len]):
 					if head == current_parent and (k + 1) in children:
-						parse_tree.append(k + 1)
+						parse_tree_children.append(k + 1)
+						parse_tree_parents.append(current_parent)
 						children.pop(children.index(k + 1))
 						found_child = True
+						current_parent = k + 1
 						break
 				if not found_child:
 					if current_parent != 0:
-						parse_tree.append(list(y_heads[i][:max_len])[current_parent - 1])
+						# parse_tree.append(list(y_heads[i][:max_len])[current_parent - 1])
+						current_parent = list(y_heads[i][:max_len])[current_parent - 1]
 					else:
 						break
-			parse_tree = parse_tree[:5 * max_len]
-			while len(parse_tree) <= 5 * max_len:
-				parse_tree.append(max_len + 1)
+			
+			while len(parse_tree_parents) < max_len + 1:
+				parse_tree_parents.append(max_len + 1)
+			while len(parse_tree_children) < max_len + 1:
+				parse_tree_children.append(max_len + 1)
 
 			new_x_tokens.append(np.eye(len(self.dict))[np.array(tokens)])
 			new_x_pos.append(np.eye(len(self.pos_dict))[np.array(pos_onehot)])
 			new_x_pos_2.append(np.eye(len(self.pos_2_dict))[np.array(pos_2_onehot)])
-			new_y_in.append(np.eye(max_len + 2)[np.array(parse_tree[:-1])])
-			new_y_out.append(np.eye(max_len + 2)[np.array(parse_tree[1:])])
+			new_y_in_parents.append(np.eye(max_len + 2)[np.array(parse_tree_parents[:-1])])
+			new_y_in_children.append(np.eye(max_len + 2)[np.array(parse_tree_children[:-1])])
+			new_y_out_parents.append(np.eye(max_len + 2)[np.array(parse_tree_parents[1:])])
+			new_y_out_children.append(np.eye(max_len + 2)[np.array(parse_tree_children[1:])])
 
-		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in, new_y_out
+		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in_parents, new_y_in_children, new_y_out_parents, new_y_out_children
 			
 
 
