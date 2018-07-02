@@ -175,3 +175,6 @@ def main(unused_args):
 
 if __name__ == "__main__":
 	app.run(main)
+
+# Try predicting inside-out sequence but without repetition
+# Use a second network to predict heads based on predicted sequence
