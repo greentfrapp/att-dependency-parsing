@@ -1,6 +1,4 @@
 
-# BUG SEE SAMPLE 3/4 py main.py --test
-
 import numpy as np
 import tensorflow as tf
 from absl import flags
@@ -99,8 +97,6 @@ def main(unused_args):
 		for n_sample in np.arange(5):
 
 			gold_parents = dict()
-			print()
-			print(np.argmax(y_out_children[n_sample], axis=1))
 			for i, token in enumerate(y_out_children[n_sample]):
 				if np.argmax(token) != FLAGS.max_len + 1:
 					gold_parents[np.argmax(token)] = np.argmax(y_out_parents[n_sample][i])
@@ -176,9 +172,9 @@ def main(unused_args):
 				except:
 					wrong += 1
 
-			print()
-			print(predicted_parents)
-			print(gold_parents)
+			# print()
+			# print(predicted_parents)
+			# print(gold_parents)
 			# sentence = dev_task.prettify(x_tokens[n_sample], clip_padding=True)
 			# print(sentence)
 			# print(parents[1:])

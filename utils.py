@@ -46,13 +46,13 @@ class DependencyTask(object):
 							self.x_pos_2.append(tokens_pos_2)
 							self.y_heads.append(heads)
 							self.y_labels.append(labels)
-							idx = 0
-							punct = []
-							tokens = []
-							tokens_pos = []
-							tokens_pos_2 = []
-							heads = []
-							labels = []
+						idx = 0
+						punct = []
+						tokens = []
+						tokens_pos = []
+						tokens_pos_2 = []
+						heads = []
+						labels = []
 					elif line.startswith('\n'):
 						pass
 					else:
@@ -203,14 +203,6 @@ class DependencyTask(object):
 			new_y_out_parents.append(np.eye(max_len + 2)[np.array(parse_tree_parents[1:])])
 			new_y_out_children.append(np.eye(max_len + 2)[np.array(parse_tree_children[1:])])
 
-			if i == 3:
-				print(i)
-				for pos in pos_onehot:
-					print(self.pos_dict[pos])
-				print(y_heads[i][:max_len])
-				print([np.array(parse_tree_children[1:])])
-				quit()
-
 		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in_parents, new_y_in_children, new_y_out_parents, new_y_out_children
 			
 
@@ -349,3 +341,7 @@ class DependencyTask(object):
 		with open(filepath + "_y_labels", 'r') as file:
 			self.y_labels = json.load(file)
 		print("Files loaded.")
+
+# if __name__ == "__main__":
+# 	dev_task = DependencyTask("data/en_ewt-ud-dev.conllu", dictpath="data/en_ewt-ud-train.conllu.dict")
+# 	dev_task.next_batch(64, 20)
