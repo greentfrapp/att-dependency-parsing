@@ -1,4 +1,6 @@
 
+# BUG SEE SAMPLE 3/4 py main.py --test
+
 import numpy as np
 import tensorflow as tf
 from absl import flags
@@ -59,7 +61,7 @@ def main(unused_args):
 					model.y_in_children: y_in_children,
 					model.y_out_parents: y_out_parents,
 					model.y_out_children: y_out_children,
-					model.is_training: True,
+					model.is_training: False,
 					# model.mask: mask,
 				}
 				val_loss = sess.run(model.loss, feed_dict)
@@ -89,14 +91,16 @@ def main(unused_args):
 
 		model.load(FLAGS.savepath)
 
-		x_tokens, x_pos, x_pos_2, y_in_parents, y_in_children, y_out_parents, y_out_children = task.next_batch(64, FLAGS.max_len)
-
+		x_tokens, x_pos, x_pos_2, y_in_parents, y_in_children, y_out_parents, y_out_children = dev_task.next_batch(64, FLAGS.max_len)
+	
 		correct = 0.
 		wrong = 0.
 
-		for n_sample in np.arange(64):
+		for n_sample in np.arange(5):
 
 			gold_parents = dict()
+			print()
+			print(np.argmax(y_out_children[n_sample], axis=1))
 			for i, token in enumerate(y_out_children[n_sample]):
 				if np.argmax(token) != FLAGS.max_len + 1:
 					gold_parents[np.argmax(token)] = np.argmax(y_out_parents[n_sample][i])
@@ -172,6 +176,9 @@ def main(unused_args):
 				except:
 					wrong += 1
 
+			print()
+			print(predicted_parents)
+			print(gold_parents)
 			# sentence = dev_task.prettify(x_tokens[n_sample], clip_padding=True)
 			# print(sentence)
 			# print(parents[1:])
