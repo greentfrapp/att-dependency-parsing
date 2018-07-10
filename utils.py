@@ -2,7 +2,6 @@
 Preprocessing and utility functions
 """
 
-
 import numpy as np
 import json
 from collections import Counter
@@ -14,6 +13,10 @@ class DependencyTask(object):
 	def __init__(self, filepath=None, dictpath=None, remove_punct=True):
 		super(DependencyTask, self).__init__()
 		self.idx = 0
+		self.bucket_lengths = [1, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 140]
+		self.buckets = {}
+		for length in self.bucket_lengths:
+			self.buckets[length] = []
 		if filepath is not None:
 			self.line_no = []
 			self.x_tokens = []
@@ -95,6 +98,19 @@ class DependencyTask(object):
 					self.y_heads.append(heads)
 					self.y_labels.append(labels)
 
+			self.x_tokens = np.array(self.x_tokens)
+			self.x_pos = np.array(self.x_pos)
+			self.x_pos_2 = np.array(self.x_pos_2)
+			self.y_heads = np.array(self.y_heads)
+			self.y_labels = np.array(self.y_labels)
+
+			# Sort samples into buckets
+			for i, sequence in enumerate(self.x_tokens):
+				for length in self.bucket_lengths:
+					if len(sequence) <= length:
+						self.buckets[length].append(i)
+						break
+
 			if dictpath is None:
 				dictpath = filepath + '.dict'
 			self.make_dict(dictpath)
@@ -104,30 +120,23 @@ class DependencyTask(object):
 			with open("data/pos_2_dict.json", 'r') as file:
 				self.pos_2_dict = json.load(file)
 
-	def next_batch(self, batchsize=64, max_len=20):
+	def next_batch(self, batchsize=64, bucket=0):
 		start = self.idx
 		end = self.idx + batchsize
-		minibatch_x_tokens = self.x_tokens[start:end]
-		minibatch_x_pos = self.x_pos[start:end]
-		minibatch_x_pos_2 = self.x_pos_2[start:end]
-		minibatch_y_heads = self.y_heads[start:end]
-		minibatch_y_labels = self.y_labels[start:end]
+		minibatch_bucket = np.array(self.buckets[self.bucket_lengths[bucket]][start:end])
+		minibatch_x_tokens = self.x_tokens[minibatch_bucket]
+		minibatch_x_pos = self.x_pos[minibatch_bucket]
+		minibatch_x_pos_2 = self.x_pos_2[minibatch_bucket]
+		minibatch_y_heads = self.y_heads[minibatch_bucket]
+		minibatch_y_labels = self.y_labels[minibatch_bucket]
 		self.idx = end
-		if self.idx > len(self.x_tokens):
+		if self.idx > len(self.buckets[self.bucket_lengths[bucket]]):
 			self.idx = 0
 			shuffler = np.random.RandomState(0)
-			shuffler.shuffle(self.x_tokens)
-			shuffler = np.random.RandomState(0)
-			shuffler.shuffle(self.x_pos)
-			shuffler = np.random.RandomState(0)
-			shuffler.shuffle(self.x_pos_2)
-			shuffler = np.random.RandomState(0)
-			shuffler.shuffle(self.y_heads)
-			shuffler = np.random.RandomState(0)
-			shuffler.shuffle(self.y_labels)
-		return self.preprocess(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len)
+			shuffler.shuffle(self.buckets[self.bucket_lengths[bucket]])
+		return self.preprocess(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=self.bucket_lengths[bucket])
 
-	def preprocess(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len=20):
+	def preprocess(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len):
 
 		new_x_tokens = []
 		new_x_pos = []
@@ -204,102 +213,6 @@ class DependencyTask(object):
 			new_y_out_children.append(np.eye(max_len + 2)[np.array(parse_tree_children[1:])])
 
 		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in_parents, new_y_in_children, new_y_out_parents, new_y_out_children
-			
-
-
-
-	# def preprocess(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len=20):
-	# 	new_x_tokens = []
-	# 	new_x_pos = []
-	# 	new_x_pos_2 = []
-	# 	new_y_heads = []
-	# 	new_y_labels = []
-	# 	new_y_roots = []
-	# 	new_y_sorted_in = []
-	# 	new_y_sorted_out = []
-	# 	new_y_sorted_out_heads = []
-	# 	for i, _ in enumerate(x_tokens):
-	# 		tokens = []
-	# 		padded_sentence = ['<ROOT>']
-	# 		padded_sentence += x_tokens[i][:max_len]
-	# 		while len(padded_sentence) <= max_len:
-	# 			padded_sentence += ['<PAD>']
-	# 		padded_sentence += ['<NULL>']
-	# 		for token in padded_sentence:
-	# 			try:
-	# 				tokens.append(self.dict.index(token))
-	# 			except:
-	# 				tokens.append(self.dict.index('<UNK>'))
-	# 		new_x_tokens.append(np.eye(len(self.dict))[tokens])
-
-	# 		tokens_pos = []
-	# 		padded_pos = ['<ROOT>']
-	# 		padded_pos += x_pos[i][:max_len]
-	# 		while len(padded_pos) <= max_len:
-	# 			padded_pos += ['<PAD>']
-	# 		padded_pos += ['<NULL>']
-	# 		for pos in padded_pos:
-	# 			tokens_pos.append(self.pos_dict.index(pos))
-	# 		new_x_pos.append(np.eye(len(self.pos_dict))[tokens_pos])
-
-	# 		tokens_pos_2 = []
-	# 		padded_pos_2 = ['<ROOT>']
-	# 		padded_pos_2 += x_pos_2[i][:max_len]
-	# 		while len(padded_pos_2) <= max_len:
-	# 			padded_pos_2 += ['<PAD>']
-	# 		padded_pos_2 += ['<NULL>']
-	# 		for pos in padded_pos_2:
-	# 			tokens_pos_2.append(self.pos_2_dict.index(pos))
-	# 		new_x_pos_2.append(np.eye(len(self.pos_2_dict))[tokens_pos_2])
-
-	# 		padded_heads = [-1]
-	# 		for head in y_heads[i][:max_len]:
-	# 			if head > max_len - 1:
-	# 				padded_heads.append(-1)
-	# 			else:
-	# 				padded_heads.append(head)
-	# 		while len(padded_heads) <= max_len:
-	# 			padded_heads.append(-1)
-	# 		padded_heads.append(-1)
-	# 		new_y_heads.append(np.eye(max_len + 2)[np.array(padded_heads)])
-
-	# 		root = -1
-	# 		for k, head in enumerate(y_heads[i][:max_len]):
-	# 			if head == 0:
-	# 				root = k
-	# 		new_y_roots.append([np.eye(max_len + 2)[root]])
-
-	# 		mask = np.ones((len(x_tokens), 1, max_len + 2))
-	# 		for j, sequence in enumerate(x_tokens):
-	# 			for k, _ in enumerate(mask[i, 0, :]):
-	# 				if k > len(sequence):
-	# 					mask[i, 0, k] = 0
-			
-	# 		sorted_heads = [0]
-	# 		parents = [0]
-	# 		children = []
-	# 		sorted_parents = [0]
-	# 		while len(sorted_heads) < len(padded_heads):
-	# 			for k, head in enumerate(padded_heads[1:]):
-	# 				if head in parents or (head == -1 and (max_len - 1) in parents):
-	# 					children.append(k + 1)
-	# 					sorted_parents.append(head)
-	# 			if len(children) == 0:
-	# 				break
-	# 			for child in children:
-	# 				sorted_heads.append(child)
-	# 			parents = children
-	# 			children = []
-	# 		while len(sorted_heads) < len(padded_heads):
-	# 			sorted_heads.append(-1)
-	# 		while len(sorted_parents) < len(padded_heads):
-	# 			sorted_parents.append(-1)
-				
-	# 		new_y_sorted_in.append([np.eye(max_len + 2)[np.array(sorted_heads)]])
-	# 		new_y_sorted_out.append([np.eye(max_len + 2)[np.array(sorted_heads[1:] + [-1])]])
-	# 		new_y_sorted_out_heads.append([np.eye(max_len + 2)[np.array(sorted_parents[1:] + [-1])]])
-
-	# 	return np.array(new_x_tokens), np.array(new_x_pos), np.array(new_x_pos_2), np.array(new_y_sorted_in).reshape(-1, 42, 42), np.array(new_y_sorted_out).reshape(-1, 42, 42), np.array(new_y_sorted_out_heads).reshape(-1, 42, 42)
 
 	def make_dict(self, filepath, min_freq=10):
 		try:
