@@ -12,10 +12,13 @@ FLAGS = flags.FLAGS
 # Commands
 flags.DEFINE_bool("train", False, "Train")
 flags.DEFINE_bool("test", False, "Test")
+
+flags.DEFINE_bool("load", False, "Load to resume training")
 flags.DEFINE_integer("sample", 0, "Sample to test")
 
 # Train parameters
 flags.DEFINE_string("savepath", "models/", "Savepath to load/save models")
+flags.DEFINE_integer("steps", 500, "Number of steps to train model")
 
 # Task parameters
 # flags.DEFINE_integer("max_len", 40, "Max sequence length")
@@ -26,13 +29,15 @@ def main(unused_args):
 		task = DependencyTask("data/en_ewt-ud-train.conllu")
 		dev_task = DependencyTask("data/en_ewt-ud-dev.conllu", dictpath="data/en_ewt-ud-train.conllu.dict")
 		sess = tf.Session()
-		model = AttentionModel(sess, len(task.dict), max_len=task.bucket_lengths[FLAGS.bucket_id])
+		# model = AttentionModel(sess, len(task.dict), max_len=task.bucket_lengths[FLAGS.bucket_id])
+		model = AttentionModel(sess, len(task.dict), max_len=140)
 
+		if FLAGS.load:
+			model.load(FLAGS.savepath)
+		# else:
 		sess.run(tf.global_variables_initializer())
 
-		n_steps = 5000
-
-		for step in np.arange(n_steps):
+		for step in np.arange(FLAGS.steps):
 			x_tokens, x_pos, x_pos_2, y_in_parents, y_in_children, y_out_parents, y_out_children = task.next_batch(64, FLAGS.bucket_id)
 
 			feed_dict = {
@@ -86,6 +91,7 @@ def main(unused_args):
 		task = DependencyTask("data/en_ewt-ud-train.conllu")
 		dev_task = DependencyTask("data/en_ewt-ud-dev.conllu", dictpath="data/en_ewt-ud-train.conllu.dict")
 		max_len = task.bucket_lengths[FLAGS.bucket_id]
+		max_len = 140
 		sess = tf.Session()
 		model = AttentionModel(sess, len(task.dict), max_len=max_len)
 
@@ -96,7 +102,7 @@ def main(unused_args):
 		correct = 0.
 		wrong = 0.
 
-		for n_sample in np.arange(64):
+		for n_sample in np.arange(1):
 
 			gold_parents = dict()
 			for i, token in enumerate(y_out_children[n_sample]):
@@ -105,14 +111,14 @@ def main(unused_args):
 
 			token_ids = list(np.argmax(x_tokens[n_sample], axis=1))
 			if 0 in token_ids:
-				size = token_ids.index(0) 
+				size = token_ids.index(0)
 			else:
 				size = max_len + 1
 
 			mask_children = np.ones(max_len + 2)
-			mask_parents = np.ones(max_len + 2)
+			mask_parents = np.zeros(max_len + 2)
 			mask_children[-1] = 0
-			mask_parents[-1] = 0
+			mask_parents[0] = 1
 			children_left = list(np.arange(1, size))
 			parents = [0]
 			children = [0]

@@ -2,14 +2,13 @@
 import tensorflow as tf
 import numpy as np
 
-# Idea 1 : Using attention matrix to denote parents
-# Problem : If we use dot product attention then the self-attention relation is somewhat symmetrical
-# Is that true?
-# Preprocessing
-# - Add ROOT to front of every sequence
-# - Add NULL to back of every sequence
-# - For labels, point padding labels to NULL
-# - Define loss as L2 loss between attention map and dependency map
+# Options
+# - Use word embeddings
+# - Use siblibing information
+# - Inside-out left-right
+# - Character embeddings
+# - DONE - Use hidden state of child instead of word index
+# - Optimize log likelihood of correct prediction instead of crossentropy
 
 class AttentionModel(object):
 
@@ -111,40 +110,45 @@ class AttentionModel(object):
 			name="pos_input_embedding"
 		)
 
-		# Embed POS2 inputs to hidden dimension
-		pos_2_input_emb = tf.layers.dense(
-			inputs=self.pos_2_inputs,
-			units=self.hidden,
-			activation=None,
-			name="pos_2_input_embedding"
-		)
+		# # Embed POS2 inputs to hidden dimension
+		# pos_2_input_emb = tf.layers.dense(
+		# 	inputs=self.pos_2_inputs,
+		# 	units=self.hidden,
+		# 	activation=None,
+		# 	name="pos_2_input_embedding"
+		# )
+
+		encoding = input_emb + posit_enc + pos_input_emb #+ pos_2_input_emb
 
 		# Embed inputs to hidden dimension
+		y_in_parents_emb = tf.matmul(self.y_in_parents, encoding)
+		y_in_children_emb = tf.matmul(self.y_in_children, encoding)
+
 		dec_input_emb = tf.layers.dense(
-			inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
+			# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
+			inputs=tf.concat([y_in_parents_emb, y_in_children_emb], axis=2),
 			units=self.hidden,
 			activation=None,
 			name="dec_input_embedding",
 		)
 
-		dec_input_emb_parents = tf.layers.dense(
-			# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
-			inputs=self.y_in_parents,
-			units=self.hidden,
-			activation=None,
-			name="dec_input_embedding_parents",
-		)
+		# dec_input_emb_parents = tf.layers.dense(
+		# 	# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
+		# 	inputs=self.y_in_parents,
+		# 	units=self.hidden,
+		# 	activation=None,
+		# 	name="dec_input_embedding_parents",
+		# )
 
-		dec_input_emb_children = tf.layers.dense(
-			# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
-			inputs=self.y_in_children,
-			units=self.hidden,
-			activation=None,
-			name="dec_input_embedding_children",
-		)
+		# dec_input_emb_children = tf.layers.dense(
+		# 	# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
+		# 	inputs=self.y_in_children,
+		# 	units=self.hidden,
+		# 	activation=None,
+		# 	name="dec_input_embedding_children",
+		# )
 
 		# Add positional encodings
-		encoding = input_emb + posit_enc + pos_input_emb + pos_2_input_emb
 
 		decoding = dec_input_emb + posit_dec
 		# decoding = dec_input_emb_children + dec_input_emb_parents + posit_dec

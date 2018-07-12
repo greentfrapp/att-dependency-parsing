@@ -123,18 +123,19 @@ class DependencyTask(object):
 	def next_batch(self, batchsize=64, bucket=0):
 		start = self.idx
 		end = self.idx + batchsize
-		minibatch_bucket = np.array(self.buckets[self.bucket_lengths[bucket]][start:end])
+		minibatch_bucket = np.array(self.buckets[self.bucket_lengths[bucket]][start:end], dtype=np.int32)
 		minibatch_x_tokens = self.x_tokens[minibatch_bucket]
 		minibatch_x_pos = self.x_pos[minibatch_bucket]
 		minibatch_x_pos_2 = self.x_pos_2[minibatch_bucket]
 		minibatch_y_heads = self.y_heads[minibatch_bucket]
 		minibatch_y_labels = self.y_labels[minibatch_bucket]
 		self.idx = end
-		if self.idx > len(self.buckets[self.bucket_lengths[bucket]]):
+		if self.idx >= len(self.buckets[self.bucket_lengths[bucket]]):
 			self.idx = 0
 			shuffler = np.random.RandomState(0)
 			shuffler.shuffle(self.buckets[self.bucket_lengths[bucket]])
-		return self.preprocess(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=self.bucket_lengths[bucket])
+		# return self.preprocess(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=self.bucket_lengths[bucket])
+		return self.preprocess(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=140)
 
 	def preprocess(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len):
 
