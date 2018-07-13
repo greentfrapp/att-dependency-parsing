@@ -6,6 +6,7 @@ import numpy as np
 import json
 from collections import Counter
 import matplotlib.pyplot as plt
+from gensim.models import KeyedVectors
 
 
 class DependencyTask(object):
@@ -13,7 +14,8 @@ class DependencyTask(object):
 	def __init__(self, filepath=None, dictpath=None, remove_punct=True):
 		super(DependencyTask, self).__init__()
 		self.idx = 0
-		self.bucket_lengths = [1, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 140]
+		# self.bucket_lengths = [1, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 140]
+		self.bucket_lengths = [1, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100, 140]
 		self.buckets = {}
 		for length in self.bucket_lengths:
 			self.buckets[length] = []
@@ -120,6 +122,8 @@ class DependencyTask(object):
 			with open("data/pos_2_dict.json", 'r') as file:
 				self.pos_2_dict = json.load(file)
 
+			self.wv = KeyedVectors.load("data/en_ewt-ud-train.conllu.kv", mmap='r')
+
 	def next_batch(self, batchsize=64, bucket=0):
 		start = self.idx
 		end = self.idx + batchsize
@@ -134,7 +138,7 @@ class DependencyTask(object):
 			self.idx = 0
 			shuffler = np.random.RandomState(0)
 			shuffler.shuffle(self.buckets[self.bucket_lengths[bucket]])
-		return self.preprocess2(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=self.bucket_lengths[bucket])
+		return self.preprocess4(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=self.bucket_lengths[bucket])
 		# return self.preprocess(minibatch_x_tokens, minibatch_x_pos, minibatch_x_pos_2, minibatch_y_heads, minibatch_y_labels, max_len=140)
 
 	def preprocess(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len):
@@ -297,6 +301,183 @@ class DependencyTask(object):
 			new_y_out.append(np.eye(max_len + 2)[np.array(parse_tree[1:])])
 
 		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in, new_y_out
+
+	def preprocess3(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len):
+
+		new_x_tokens = []
+		new_x_pos = []
+		new_x_pos_2 = []
+		new_y_in = []
+		new_y_out = []
+
+		for i, _ in enumerate(x_tokens):
+
+			# Onehot encode tokens
+			# Add <ROOT> at beginning, <PAD> to max_len and add <NULL> at end
+			tokens = [self.dict.index('<ROOT>')]
+			for token in x_tokens[i]:
+				try:
+					tokens.append(self.dict.index(token))
+				except:
+					tokens.append(self.dict.index('<UNK>'))
+			while len(tokens) < max_len + 1:
+				tokens.append(self.dict.index('<PAD>'))
+			tokens.append(self.dict.index('<NULL>'))
+
+			tokens_wv = []
+			for token in tokens:
+				if token < 4:
+					tokens_wv.append(np.eye(100)[token])
+				else:
+					tokens_wv.append(self.wv[self.dict[token]])
+
+			# Onehot encode POS tags
+			pos_onehot = [self.pos_dict.index('<ROOT>')]
+			for pos in x_pos[i][:max_len]:
+				pos_onehot.append(self.pos_dict.index(pos))
+			while len(pos_onehot) < max_len + 1:
+				pos_onehot.append(self.pos_dict.index('<PAD>'))
+			pos_onehot.append(self.pos_dict.index('<NULL>'))
+
+			# Onehot encode POS 2 tags
+			pos_2_onehot = [self.pos_2_dict.index('<ROOT>')]
+			for pos in x_pos_2[i][:max_len]:
+				pos_2_onehot.append(self.pos_2_dict.index(pos))
+			while len(pos_2_onehot) < max_len + 1:
+				pos_2_onehot.append(self.pos_2_dict.index('<PAD>'))
+			pos_2_onehot.append(self.pos_2_dict.index('<NULL>'))
+
+			# Flattened parse tree, inside-out, left-right
+			parse_tree = [0]
+			children = list(np.arange(1, len(x_tokens[i]) + 1))
+			current_parent = 0
+			while True:
+				# current_parent = parse_tree[-1]
+				left = []
+				right = []
+				for child in children:
+					if child < current_parent:
+						left.append(child)
+					else:
+						right.append(child)
+				children = left[::-1] + right
+				found_child = False
+				for child in children:
+					if y_heads[i][child - 1] == current_parent:
+						parse_tree.append(child)
+						children.pop(children.index(child))
+						found_child = True
+						current_parent = child
+						break
+
+				if not found_child:
+					if current_parent != 0:
+						parse_tree.append(current_parent)
+						current_parent = y_heads[i][current_parent - 1]
+					else:
+						break
+
+				if current_parent == 0:
+					parse_tree.append(0)
+					break
+			
+			while len(parse_tree) < 2 * max_len + 2:
+				parse_tree.append(max_len + 1)
+
+			# new_x_tokens.append(np.eye(len(self.dict))[np.array(tokens)])
+			new_x_tokens.append(tokens_wv)
+			new_x_pos.append(np.eye(len(self.pos_dict))[np.array(pos_onehot)])
+			new_x_pos_2.append(np.eye(len(self.pos_2_dict))[np.array(pos_2_onehot)])
+			new_y_in.append(np.eye(max_len + 2)[np.array(parse_tree[:-1])])
+			new_y_out.append(np.eye(max_len + 2)[np.array(parse_tree[1:])])
+
+		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in, new_y_out
+
+	def preprocess4(self, x_tokens, x_pos, x_pos_2, y_heads, y_labels, max_len):
+
+		new_x_tokens = []
+		new_x_pos = []
+		new_x_pos_2 = []
+		new_y_in_parents = []
+		new_y_in_children = []
+		new_y_out_parents = []
+		new_y_out_children = []
+
+		for i, _ in enumerate(x_tokens):
+
+			# Onehot encode tokens
+			# Add <ROOT> at beginning, <PAD> to max_len and add <NULL> at end
+			tokens = [self.dict.index('<ROOT>')]
+			for token in x_tokens[i][:max_len]:
+				try:
+					tokens.append(self.dict.index(token))
+				except:
+					tokens.append(self.dict.index('<UNK>'))
+			while len(tokens) < max_len + 1:
+				tokens.append(self.dict.index('<PAD>'))
+			tokens.append(self.dict.index('<NULL>'))
+
+			tokens_wv = []
+			for token in tokens:
+				if token < 4:
+					tokens_wv.append(np.eye(100)[token])
+				else:
+					tokens_wv.append(self.wv[self.dict[token]])
+
+			# Onehot encode POS tags
+			pos_onehot = [self.pos_dict.index('<ROOT>')]
+			for pos in x_pos[i][:max_len]:
+				pos_onehot.append(self.pos_dict.index(pos))
+			while len(pos_onehot) < max_len + 1:
+				pos_onehot.append(self.pos_dict.index('<PAD>'))
+			pos_onehot.append(self.pos_dict.index('<NULL>'))
+
+			# Onehot encode POS 2 tags
+			pos_2_onehot = [self.pos_2_dict.index('<ROOT>')]
+			for pos in x_pos_2[i][:max_len]:
+				pos_2_onehot.append(self.pos_2_dict.index(pos))
+			while len(pos_2_onehot) < max_len + 1:
+				pos_2_onehot.append(self.pos_2_dict.index('<PAD>'))
+			pos_2_onehot.append(self.pos_2_dict.index('<NULL>'))
+
+			# Flattened parse tree, depth first
+			parse_tree_children = [0]
+			parse_tree_parents = [0]
+			children = list(np.arange(1, max_len + 1))
+			current_parent = 0
+			while len(children) > 0:
+				# current_parent = parse_tree[-1]
+				found_child = False
+				for k, head in enumerate(y_heads[i][:max_len]):
+					if head == current_parent and (k + 1) in children:
+						parse_tree_children.append(k + 1)
+						parse_tree_parents.append(current_parent)
+						children.pop(children.index(k + 1))
+						found_child = True
+						current_parent = k + 1
+						break
+				if not found_child:
+					if current_parent != 0:
+						# parse_tree.append(list(y_heads[i][:max_len])[current_parent - 1])
+						current_parent = list(y_heads[i][:max_len])[current_parent - 1]
+					else:
+						break
+			
+			while len(parse_tree_parents) < max_len + 1:
+				parse_tree_parents.append(max_len + 1)
+			while len(parse_tree_children) < max_len + 1:
+				parse_tree_children.append(max_len + 1)
+
+			# new_x_tokens.append(np.eye(len(self.dict))[np.array(tokens)])
+			new_x_tokens.append(tokens_wv)
+			new_x_pos.append(np.eye(len(self.pos_dict))[np.array(pos_onehot)])
+			new_x_pos_2.append(np.eye(len(self.pos_2_dict))[np.array(pos_2_onehot)])
+			new_y_in_parents.append(np.eye(max_len + 2)[np.array(parse_tree_parents[:-1])])
+			new_y_in_children.append(np.eye(max_len + 2)[np.array(parse_tree_children[:-1])])
+			new_y_out_parents.append(np.eye(max_len + 2)[np.array(parse_tree_parents[1:])])
+			new_y_out_children.append(np.eye(max_len + 2)[np.array(parse_tree_children[1:])])
+
+		return new_x_tokens, new_x_pos, new_x_pos_2, new_y_in_parents, new_y_in_children, new_y_out_parents, new_y_out_children
 
 
 	def make_dict(self, filepath, min_freq=10):

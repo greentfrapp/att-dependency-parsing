@@ -2,7 +2,7 @@ import numpy as np
 
 from utils import DependencyTask
 
-task = DependencyTask("data/en_ewt-ud-dev.conllu")
+task = DependencyTask("data/en_ewt-ud-train.conllu")
 # total = 0
 # for bucket in task.buckets:
 # 	print(len(task.buckets[bucket]))
@@ -10,10 +10,9 @@ task = DependencyTask("data/en_ewt-ud-dev.conllu")
 # print(total)
 # print(len(task.x_tokens))
 
-for i in range(6):
-	x_tokens, x_pos, x_pos_2, y_in_parents, y_in_children, y_out_parents, y_out_children = task.next_batch(64, 2)
+for i in range(1):
+	words, x_tokens, x_pos, x_pos_2, y_in, y_out = task.next_batch(64, 1)
 
-	print(np.array(x_tokens).shape)
-	print(np.array(y_in_parents).shape)
-	if i == 5:
-		print(x_tokens)
+	for i, sample in enumerate(y_out[:5]):
+		print(words[i])
+		print(np.argmax(sample, axis=1))

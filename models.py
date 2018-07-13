@@ -12,7 +12,7 @@ import numpy as np
 
 class AttentionModel(object):
 
-	def __init__(self, sess, vocab_size, pos_size=18, pos_2_size=42, max_len=10, hidden=512, name="DepParse", pos_enc=True, enc_layers=3, dec_layers=3, heads=8):
+	def __init__(self, sess, vocab_size, pos_size=18, pos_2_size=42, max_len=10, hidden=512, name="DepParse", pos_enc=True, enc_layers=6, dec_layers=6, heads=8):
 		super(AttentionModel, self).__init__()
 		self.sess = sess
 		self.max_len = max_len
@@ -33,7 +33,7 @@ class AttentionModel(object):
 	def build_model(self):
 
 		self.inputs = tf.placeholder(
-			shape=(None, self.max_len + 2, self.vocab_size),
+			shape=(None, self.max_len + 2, 100),
 			dtype=tf.float32,
 			name="encoder_input",
 		)
@@ -133,14 +133,14 @@ class AttentionModel(object):
 		encoding = input_emb + posit_enc + pos_input_emb #+ pos_2_input_emb
 
 		# Embed inputs to hidden dimension
-		y_in_parents_emb = tf.matmul(self.y_in_parents, encoding)
-		y_in_children_emb = tf.matmul(self.y_in_children, encoding)
+		# y_in_parents_emb = tf.matmul(self.y_in_parents, encoding)
+		# y_in_children_emb = tf.matmul(self.y_in_children, encoding)
 
 		y_in_emb = tf.matmul(self.y_in, encoding)
 
 		dec_input_emb = tf.layers.dense(
-			# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
-			inputs=tf.concat([y_in_parents_emb, y_in_children_emb], axis=2),
+			inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
+			# inputs=tf.concat([y_in_parents_emb, y_in_children_emb], axis=2),
 			# inputs = y_in_emb,
 			units=self.hidden,
 			activation=None,
@@ -234,9 +234,10 @@ class AttentionModel(object):
 		# decode parents
 		decoded_parents = tf.layers.dense(
 			inputs=decoding,
-			# units=self.hidden * 2,
-			units=self.max_len + 2,
-			# activation=tf.nn.relu,
+			units=self.hidden * 2,
+			# units=self.max_len + 2,
+			# activation=None,
+			activation=tf.nn.relu,
 			name="decoding_parents_pre",
 		)
 		# decoded_parents = tf.layers.dropout(
@@ -244,19 +245,20 @@ class AttentionModel(object):
 		# 	rate=0.5,
 		# 	training=self.is_training,
 		# )
-		# decoded_parents = tf.layers.dense(
-		# 	inputs=decoded_parents,
-		# 	units=self.max_len + 2,
-		# 	activation=None,
-		# 	name="decoded_parents",
-		# )
+		decoded_parents = tf.layers.dense(
+			inputs=decoded_parents,
+			units=self.max_len + 2,
+			activation=None,
+			name="decoded_parents",
+		)
 
 		# decode children
 		decoded_children = tf.layers.dense(
 			inputs=decoding,
-			# units=self.hidden * 2,
-			units=self.max_len + 2,
-			# activation=tf.nn.relu,
+			units=self.hidden * 2,
+			# units=self.max_len + 2,
+			# activation=None,
+			activation=tf.nn.relu,
 			name="decoding_children_pre",
 		)
 		# decoded_children = tf.layers.dropout(
@@ -264,12 +266,12 @@ class AttentionModel(object):
 		# 	rate=0.5,
 		# 	training=self.is_training,
 		# )
-		# decoded_children = tf.layers.dense(
-		# 	inputs=decoded_children,
-		# 	units=self.max_len + 2,
-		# 	activation=None,
-		# 	name="decoded_children",
-		# )
+		decoded_children = tf.layers.dense(
+			inputs=decoded_children,
+			units=self.max_len + 2,
+			activation=None,
+			name="decoded_children",
+		)
 
 		decoded = tf.layers.dense(
 			inputs=decoding,
@@ -366,7 +368,7 @@ class AttentionModel2(object):
 	def build_model(self):
 
 		self.inputs = tf.placeholder(
-			shape=(None, self.max_len + 2, self.vocab_size),
+			shape=(None, self.max_len + 2, 100),
 			dtype=tf.float32,
 			name="encoder_input",
 		)
@@ -377,44 +379,14 @@ class AttentionModel2(object):
 			name="encoder_pos_input",
 		)
 
-		# self.pos_2_inputs = tf.placeholder(
-		# 	shape=(None, self.max_len + 2, self.pos_2_size),
-		# 	dtype=tf.float32,
-		# 	name="encoder_pos_2_input",
-		# )
-
-		# self.y_in_parents = tf.placeholder(
-		# 	shape=(None, self.max_len, self.max_len + 2),
-		# 	dtype=tf.float32,
-		# 	name="y_in_parents",
-		# )
-
-		# self.y_in_children = tf.placeholder(
-		# 	shape=(None, self.max_len, self.max_len + 2),
-		# 	dtype=tf.float32,
-		# 	name="y_in_children",
-		# )
-
-		# self.y_out_parents = tf.placeholder(
-		# 	shape=(None, self.max_len, self.max_len + 2),
-		# 	dtype=tf.float32,
-		# 	name="y_out_parents",
-		# )
-
-		# self.y_out_children = tf.placeholder(
-		# 	shape=(None, self.max_len, self.max_len + 2),
-		# 	dtype=tf.float32,
-		# 	name="y_out_children",
-		# )
-
 		self.y_in = tf.placeholder(
-			shape=(None, 2 * self.max_len, self.max_len + 2),
+			shape=(None, 2 * self.max_len + 1, self.max_len + 2),
 			dtype=tf.float32,
 			name="y_in",
 		)
 
 		self.y_out = tf.placeholder(
-			shape=(None, 2 * self.max_len, self.max_len + 2),
+			shape=(None, 2 * self.max_len + 1, self.max_len + 2),
 			dtype=tf.float32,
 			name="y_in",
 		)
@@ -433,26 +405,33 @@ class AttentionModel2(object):
 		)
 
 		posit_dec = tf.Variable(
-			initial_value=tf.zeros((1, 2*self.max_len, self.hidden)),
+			initial_value=tf.zeros((1, 2 * self.max_len + 1, self.hidden)),
 			trainable=True,
 			dtype=tf.float32,
 			name="dec_positional_coding"
 		)
 
 		# Embed inputs to hidden dimension
-		input_emb = tf.layers.dense(
-			inputs=self.inputs,
-			units=self.hidden,
-			activation=None,
-			name="input_embedding",
-		)
+		# input_emb = tf.layers.dense(
+		# 	inputs=self.inputs,
+		# 	units=self.hidden,
+		# 	activation=None,
+		# 	name="input_embedding",
+		# )
 
 		# Embed POS inputs to hidden dimension
-		pos_input_emb = tf.layers.dense(
-			inputs=self.pos_inputs,
+		# pos_input_emb = tf.layers.dense(
+		# 	inputs=self.pos_inputs,
+		# 	units=self.hidden,
+		# 	activation=None,
+		# 	name="pos_input_embedding"
+		# )
+
+		input_emb = tf.layers.dense(
+			inputs=tf.concat([self.inputs, self.pos_inputs], axis=2),
 			units=self.hidden,
 			activation=None,
-			name="pos_input_embedding"
+			name="input_embedding"
 		)
 
 		# # Embed POS2 inputs to hidden dimension
@@ -463,7 +442,7 @@ class AttentionModel2(object):
 		# 	name="pos_2_input_embedding"
 		# )
 
-		encoding = input_emb + posit_enc + pos_input_emb #+ pos_2_input_emb
+		encoding = input_emb + posit_enc #+ pos_input_emb #+ pos_2_input_emb
 
 		# Embed inputs to hidden dimension
 		# y_in_parents_emb = tf.matmul(self.y_in_parents, encoding)
@@ -475,6 +454,7 @@ class AttentionModel2(object):
 			# inputs=tf.concat([self.y_in_parents, self.y_in_children], axis=2),
 			# inputs=tf.concat([y_in_parents_emb, y_in_children_emb], axis=2),
 			inputs = y_in_emb,
+			# inputs = self.y_in,
 			units=self.hidden,
 			activation=None,
 			name="dec_input_embedding",
@@ -551,18 +531,26 @@ class AttentionModel2(object):
 			)
 			decoding = tf.contrib.layers.layer_norm(decoding, begin_norm_axis=2)
 
-		decoding = tf.layers.dense(
-			inputs=decoding,
-			units=self.hidden * 2,
-			activation=tf.nn.relu,
-			name="decoding_1",
+		_, self.attention = self.multihead_attention(
+			query=decoding,
+			key=encoding,
+			value=encoding,
+			h=1,
+			presoftmax=True,
 		)
 
-		decoding = tf.layers.dropout(
-			inputs=decoding,
-			rate=0.2,
-			training=self.is_training,
-		)
+		# decoding = tf.layers.dense(
+		# 	inputs=decoding,
+		# 	units=self.hidden * 2,
+		# 	activation=tf.nn.relu,
+		# 	name="decoding_1",
+		# )
+
+		# decoding = tf.layers.dropout(
+		# 	inputs=decoding,
+		# 	rate=0.2,
+		# 	training=self.is_training,
+		# )
 
 		# decode parents
 		# decoded_parents = tf.layers.dense(
@@ -604,12 +592,13 @@ class AttentionModel2(object):
 		# 	name="decoded_children",
 		# )
 
-		decoded = tf.layers.dense(
-			inputs=decoding,
-			units=self.max_len + 2,
-			activation=None,
-			name="decoded",
-		)
+		# decoded = tf.layers.dense(
+		# 	inputs=decoding,
+		# 	units=self.max_len + 2,
+		# 	activation=None,
+		# 	name="decoded",
+		# )
+		decoded = tf.reshape(self.attention, [-1, 2 * self.max_len + 1, self.max_len + 2])
 
 		# self.logits = decoding
 		# self.softmax_parents = tf.nn.softmax(decoded_parents)
@@ -622,7 +611,7 @@ class AttentionModel2(object):
 		self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.y_out, logits=decoded))
 		self.optimize = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
 
-	def multihead_attention(self, query, key, value, h=4, mask=False):
+	def multihead_attention(self, query, key, value, h=4, mask=False, presoftmax=False):
 		W_query = tf.Variable(
 			initial_value=tf.random_normal((self.hidden, self.hidden), stddev=1e-2),
 			trainable=True,
@@ -659,6 +648,8 @@ class AttentionModel2(object):
 		multihead = tf.reshape(tf.matmul(tf.reshape(weighted_sum, [-1, self.hidden]), W_output), [-1, tf.shape(query)[1], self.hidden])
 		output = multihead + query
 		output = tf.contrib.layers.layer_norm(output, begin_norm_axis=2)
+		if presoftmax:
+			return output, dotp
 		return output, attention_weights
 		
 
